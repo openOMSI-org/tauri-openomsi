@@ -1139,6 +1139,20 @@ fn main() {
     self
   }
 
+  /// openOMSI: make the webview behave like an application's interface rather than a
+  /// browser tab: no reloading, printing, find-in-page, history navigation, browser context
+  /// menu outside text fields, and no file opened in place of the page when one is dropped
+  /// on it. Developer tools stay reachable in debug builds.
+  ///
+  /// ## Platform-specific:
+  ///
+  /// - **Windows**: also turns off WebView2's browser accelerator keys and default context menus.
+  #[must_use]
+  pub fn app_mode(mut self, enabled: bool) -> Self {
+    self.webview_attributes.app_mode = enabled;
+    self
+  }
+
   /// Set the path from which to load extensions from. Extensions stored in this path should be unpacked Chrome extensions on Windows, and compiled `.so` extensions on Linux.
   ///
   /// ## Platform-specific:

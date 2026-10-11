@@ -48,6 +48,8 @@ use super::{DownloadEvent, ResolvedScope};
 pub struct WebviewWindowBuilder<'a, R: Runtime, M: Manager<R>> {
   window_builder: WindowBuilder<'a, R, M>,
   webview_builder: WebviewBuilder<R>,
+  /// openOMSI: the window stays hidden until its page has loaded (see `show_when_loaded`).
+  show_when_loaded: bool,
 }
 
 impl<'a, R: Runtime, M: Manager<R>> WebviewWindowBuilder<'a, R, M> {
@@ -103,6 +105,7 @@ impl<'a, R: Runtime, M: Manager<R>> WebviewWindowBuilder<'a, R, M> {
     Self {
       window_builder: WindowBuilder::new(manager, &label),
       webview_builder: WebviewBuilder::new(&label, url),
+      show_when_loaded: false,
     }
   }
 
@@ -151,6 +154,7 @@ impl<'a, R: Runtime, M: Manager<R>> WebviewWindowBuilder<'a, R, M> {
     Ok(Self {
       window_builder: WindowBuilder::from_config(manager, config)?,
       webview_builder: WebviewBuilder::from_config(config),
+      show_when_loaded: false,
     })
   }
 
@@ -486,9 +490,61 @@ tauri::Builder::default()
   }
 
   /// Creates a new window.
-  pub fn build(self) -> crate::Result<WebviewWindow<R>> {
+  pub fn build(mut self) -> crate::Result<WebviewWindow<R>> {
+    #[cfg(desktop)]
+    let shown = if self.show_when_loaded {
+      use std::sync::atomic::{AtomicBool, Ordering};
+      self.window_builder = self.window_builder.visible(false);
+      let shown = Arc::new(AtomicBool::new(false));
+      let first = shown.clone();
+      let previous = self.webview_builder.on_page_load_handler.take();
+      self.webview_builder.on_page_load_handler = Some(Box::new(move |webview, payload| {
+        if payload.event() == super::PageLoadEvent::Finished && !first.swap(true, Ordering::SeqCst)
+        {
+          let _ = webview.window().show();
+        }
+        if let Some(previous) = &previous {
+          previous(webview, payload);
+        }
+      }));
+      Some(shown)
+    } else {
+      None
+    };
     let (window, webview) = self.window_builder.with_webview(self.webview_builder)?;
+    #[cfg(desktop)]
+    if let Some(shown) = shown {
+      // a page that never finishes loading must not leave an invisible program behind
+      let late = window.clone();
+      std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        if !shown.swap(true, std::sync::atomic::Ordering::SeqCst) {
+          let _ = late.show();
+        }
+      });
+    }
     Ok(WebviewWindow { window, webview })
+  }
+
+  /// openOMSI: keep the window hidden until its page has finished loading, then show it, so
+  /// the window never shows the empty (white) webview first. A page that has not loaded
+  /// after five seconds is shown anyway.
+  ///
+  /// ## Platform-specific
+  ///
+  /// - **iOS / Android:** Unsupported.
+  #[must_use]
+  pub fn show_when_loaded(mut self, enabled: bool) -> Self {
+    self.show_when_loaded = enabled;
+    self
+  }
+
+  /// openOMSI: an application's interface, not a browser tab (see
+  /// [`crate::webview::WebviewBuilder::app_mode`]).
+  #[must_use]
+  pub fn app_mode(mut self, enabled: bool) -> Self {
+    self.webview_builder = self.webview_builder.app_mode(enabled);
+    self
   }
 }
 

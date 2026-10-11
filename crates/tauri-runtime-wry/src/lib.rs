@@ -2753,6 +2753,16 @@ impl<T: UserEvent> Wry<T> {
       use tao::platform::unix::EventLoopBuilderExtUnix;
       event_loop_builder.with_app_id(app_id);
     }
+
+    #[cfg(any(
+      target_os = "linux",
+      target_os = "dragonfly",
+      target_os = "freebsd",
+      target_os = "netbsd",
+      target_os = "openbsd"
+    ))]
+    linux_webkit_workarounds();
+
     Self::init(event_loop_builder.build())
   }
 
@@ -5009,6 +5019,27 @@ You may have it installed on another user account, but it is not available for t
       .with_browser_extensions_enabled(webview_attributes.browser_extensions_enabled);
   }
 
+  // openOMSI: an application's interface, not a browser tab
+  if webview_attributes.app_mode {
+    #[cfg(windows)]
+    {
+      webview_builder = webview_builder
+        .with_browser_accelerator_keys(cfg!(debug_assertions))
+        .with_default_context_menus(cfg!(debug_assertions));
+    }
+    webview_builder = webview_builder.with_initialization_script_for_main_only(
+      APP_MODE_SCRIPT.replace(
+        "DEBUG_BUILD",
+        if cfg!(debug_assertions) {
+          "true"
+        } else {
+          "false"
+        },
+      ),
+      true,
+    );
+  }
+
   #[cfg(any(
     windows,
     target_os = "linux",
@@ -5412,5 +5443,57 @@ fn add_focus_change_listeners<T: UserEvent>(
     log::error!(
       "Failed to attach WebView2 `add_LostFocus` handler, `WindowEvent::Focused` will not be sent: {error}"
     );
+  }
+}
+
+/// openOMSI: what `WebviewAttributes::app_mode` runs in every page before its own scripts.
+/// Browser keys and gestures that make no sense in an application are swallowed; text
+/// fields keep their editing keys and their context menu (copy, paste).
+const APP_MODE_SCRIPT: &str = r#"(() => {
+  const editable = (t) => t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+  const debug = DEBUG_BUILD;
+  window.addEventListener('keydown', (e) => {
+    const k = e.key, mod = e.ctrlKey || e.metaKey;
+    const browser =
+      k === 'F5' || k === 'F7' || k === 'BrowserBack' || k === 'BrowserForward' || k === 'BrowserRefresh' ||
+      (mod && /^[rpfgju]$/i.test(k)) ||
+      (mod && e.shiftKey && /^[r]$/i.test(k)) ||
+      (e.altKey && (k === 'ArrowLeft' || k === 'ArrowRight')) ||
+      (k === 'Backspace' && !editable(e.target)) ||
+      (!debug && (k === 'F12' || (mod && e.shiftKey && /^[ijc]$/i.test(k)) || (e.metaKey && e.altKey && /^[ijc]$/i.test(k))));
+    if (browser) { e.preventDefault(); }
+  }, true);
+  window.addEventListener('contextmenu', (e) => { if (!debug && !editable(e.target)) e.preventDefault(); }, true);
+  window.addEventListener('mouseup', (e) => { if (e.button === 3 || e.button === 4) e.preventDefault(); }, true);
+  window.addEventListener('auxclick', (e) => { if (e.button === 3 || e.button === 4) e.preventDefault(); }, true);
+  const noOpen = (e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files') && !e.defaultPrevented) e.preventDefault(); };
+  window.addEventListener('dragover', noOpen);
+  window.addEventListener('drop', noOpen);
+})();"#;
+
+/// openOMSI: WebKitGTK's DMA-BUF renderer leaves the window blank (or crashes the web
+/// process) on NVIDIA's proprietary driver and on some Wayland compositors, which is the
+/// most common "empty white window" report of Tauri apps on Linux. Unless the user chose
+/// otherwise, the renderer falls back to its shared-memory path there.
+#[cfg(any(
+  target_os = "linux",
+  target_os = "dragonfly",
+  target_os = "freebsd",
+  target_os = "netbsd",
+  target_os = "openbsd"
+))]
+fn linux_webkit_workarounds() {
+  const DMABUF: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
+  if std::env::var_os(DMABUF).is_some() {
+    return;
+  }
+  let nvidia = std::path::Path::new("/proc/driver/nvidia/version").exists();
+  let appimage = std::env::var_os("APPIMAGE").is_some();
+  if nvidia || appimage {
+    // still single-threaded here: no other thread reads the environment yet
+    #[allow(unused_unsafe)]
+    unsafe {
+      std::env::set_var(DMABUF, "1");
+    }
   }
 }

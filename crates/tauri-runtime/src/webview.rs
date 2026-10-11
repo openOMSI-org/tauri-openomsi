@@ -365,6 +365,8 @@ pub struct WebviewAttributes {
   pub proxy_url: Option<Url>,
   pub zoom_hotkeys_enabled: bool,
   pub browser_extensions_enabled: bool,
+  /// openOMSI: the webview is an application's interface, not a browser (see [`Self::app_mode`]).
+  pub app_mode: bool,
   pub extensions_path: Option<PathBuf>,
   pub data_store_identifier: Option<[u8; 16]>,
   pub use_https_scheme: bool,
@@ -531,6 +533,7 @@ impl WebviewAttributes {
       proxy_url: None,
       zoom_hotkeys_enabled: false,
       browser_extensions_enabled: false,
+      app_mode: false,
       data_store_identifier: None,
       extensions_path: None,
       use_https_scheme: false,
@@ -726,6 +729,22 @@ impl WebviewAttributes {
   #[must_use]
   pub fn browser_extensions_enabled(mut self, enabled: bool) -> Self {
     self.browser_extensions_enabled = enabled;
+    self
+  }
+
+  /// openOMSI: make the webview behave like an application's interface rather than a
+  /// browser tab. Reloading (F5, Ctrl/Cmd+R), printing, find-in-page, the caret browsing
+  /// key, history navigation (Alt+Left/Right, the mouse's back and forward buttons,
+  /// Backspace outside a text field), the browser's own context menu outside text fields
+  /// and a file dropped onto the page opening that file in place of the interface are all
+  /// switched off. Developer tools stay reachable in debug builds.
+  ///
+  /// ## Platform-specific:
+  ///
+  /// - **Windows**: also turns off WebView2's browser accelerator keys and default context menus.
+  #[must_use]
+  pub fn app_mode(mut self, enabled: bool) -> Self {
+    self.app_mode = enabled;
     self
   }
 
