@@ -86,7 +86,10 @@ test('Backspace still belongs to editable controls', () => {
     { tagName: 'TEXTAREA' },
     { tagName: 'DIV', isContentEditable: true }
   ]) {
-    assert.equal(dispatch('keydown', { key: 'Backspace', target }).defaultPrevented, false)
+    assert.equal(
+      dispatch('keydown', { key: 'Backspace', target }).defaultPrevented,
+      false
+    )
   }
 })
 
