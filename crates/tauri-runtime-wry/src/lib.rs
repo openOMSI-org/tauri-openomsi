@@ -5462,7 +5462,7 @@ const APP_MODE_SCRIPT: &str = r#"(() => {
       (k === 'Backspace' && !editable(e.target)) ||
       (!debug && (k === 'F12' || (mod && e.shiftKey && /^[ijc]$/i.test(k)) || (e.metaKey && e.altKey && /^[ijc]$/i.test(k))));
     if (browser) { e.preventDefault(); }
-  }, true);
+  });
   window.addEventListener('contextmenu', (e) => { if (!debug && !editable(e.target)) e.preventDefault(); }, true);
   window.addEventListener('mouseup', (e) => { if (e.button === 3 || e.button === 4) e.preventDefault(); }, true);
   window.addEventListener('auxclick', (e) => { if (e.button === 3 || e.button === 4) e.preventDefault(); }, true);
