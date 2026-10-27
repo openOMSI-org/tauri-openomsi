@@ -490,15 +490,18 @@ tauri::Builder::default()
   }
 
   /// Creates a new window.
-  pub fn build(mut self) -> crate::Result<WebviewWindow<R>> {
+  pub fn build(self) -> crate::Result<WebviewWindow<R>> {
+    let builder = self;
     #[cfg(desktop)]
-    let shown = if self.show_when_loaded {
+    let mut builder = builder;
+    #[cfg(desktop)]
+    let shown = if builder.show_when_loaded {
       use std::sync::atomic::{AtomicBool, Ordering};
-      self.window_builder = self.window_builder.visible(false);
+      builder.window_builder = builder.window_builder.visible(false);
       let shown = Arc::new(AtomicBool::new(false));
       let first = shown.clone();
-      let previous = self.webview_builder.on_page_load_handler.take();
-      self.webview_builder.on_page_load_handler = Some(Box::new(move |webview, payload| {
+      let previous = builder.webview_builder.on_page_load_handler.take();
+      builder.webview_builder.on_page_load_handler = Some(Box::new(move |webview, payload| {
         if payload.event() == super::PageLoadEvent::Finished && !first.swap(true, Ordering::SeqCst)
         {
           let _ = webview.window().show();
@@ -511,7 +514,9 @@ tauri::Builder::default()
     } else {
       None
     };
-    let (window, webview) = self.window_builder.with_webview(self.webview_builder)?;
+    let (window, webview) = builder
+      .window_builder
+      .with_webview(builder.webview_builder)?;
     #[cfg(desktop)]
     if let Some(shown) = shown {
       // a page that never finishes loading must not leave an invisible program behind
